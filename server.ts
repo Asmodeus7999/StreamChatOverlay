@@ -6,26 +6,26 @@ import path from 'path';
 export function startServer(baseDir: string) {
     const app = express();
     const server = createServer(app);
-    
+
     // Setup origins
     const defaultOrigins = [
         "http://localhost:5000",
         "http://127.0.0.1:5000",
     ];
     const envOrigins = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim()).filter(Boolean) : defaultOrigins;
-    
+
     const io = new Server(server, {
         cors: {
             origin: envOrigins
         }
     });
 
-    // Serve static files
-    app.use('/static', express.static(path.join(baseDir, 'static')));
+    // Serve static files (from public/static/)
+    app.use('/static', express.static(path.join(baseDir, 'public', 'static')));
 
-    // Serve index
+    // Serve index (from public/index.html)
     app.get('/', (req, res) => {
-        res.sendFile(path.join(baseDir, 'templates', 'index.html'));
+        res.sendFile(path.join(baseDir, 'public', 'index.html'));
     });
 
     let currentSession: {
@@ -62,11 +62,11 @@ export function startServer(baseDir: string) {
 
 
 
-    function startTiktokClient(username: string, generation: number) {
+    async function startTiktokClient(username: string, generation: number) {
         try {
-            const { TikTokLiveConnection } = require('tiktok-live-connector');
+            const { TikTokLiveConnection } = await import("tiktok-live-connector") as any;
             const tiktokLiveConnection = new TikTokLiveConnection(username, {});
-            
+
             currentSession.client = tiktokLiveConnection;
             currentSession.type = 'tiktok';
             currentSession.username = username;
@@ -176,7 +176,7 @@ export function startServer(baseDir: string) {
 
             const { LiveChat } = require('youtube-chat');
             const liveChat = new LiveChat({ liveId: id });
-            
+
             currentSession.client = liveChat;
             currentSession.type = 'youtube';
             currentSession.username = id;
@@ -191,7 +191,7 @@ export function startServer(baseDir: string) {
 
             liveChat.on('chat', (chatItem) => {
                 if (!isCurrent()) return;
-                
+
                 // parse message text & emotes
                 let rawText = '';
                 const commentParts: Array<{ text?: string; emoteUrl?: string; alt?: string }> = [];
@@ -285,7 +285,7 @@ export function startServer(baseDir: string) {
             idleTimeout = null;
         }
 
-        socket.on('connect_stream', (data) => {
+        socket.on("connect_stream", async (data) => {
             const platform = data.platform || 'tiktok';
             let identifier = data.username || data.videoId;
 
@@ -302,12 +302,12 @@ export function startServer(baseDir: string) {
             }
 
             disconnectAll();
-            
+
             const generation = currentSession.generation;
             console.log(`Connecting to ${platform} (${identifier})...`);
 
-            if (platform === 'tiktok') {
-                startTiktokClient(identifier, generation);
+            if (platform === "tiktok") {
+                await startTiktokClient(identifier, generation);
             } else {
                 startYoutubeClient(identifier, generation);
             }
@@ -315,7 +315,7 @@ export function startServer(baseDir: string) {
 
         socket.on('disconnect', () => {
             console.log("Browser disconnected.");
-            
+
             const clients = io.engine.clientsCount;
             if (clients === 0) {
                 console.log(`No clients connected. Starting ${IDLE_TIMEOUT_MS}ms idle timeout...`);

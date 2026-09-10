@@ -1,0 +1,36 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for the main StreamChat overlay window",
+  "windows": [
+    "main"
+  ],
+  "remote": {
+    "urls": [
+      "http://127.0.0.1:5000/*",
+      "http://localhost:5000/*"
+    ]
+  },
+  "permissions": [
+    "core:default",
+    "core:window:allow-set-ignore-cursor-events",
+    "core:window:allow-set-always-on-top",
+    "core:window:allow-set-size",
+    "core:window:allow-set-position",
+    "core:window:allow-inner-size",
+    "core:window:allow-outer-position",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
+    "core:window:allow-start-dragging",
+    "core:webview:allow-internal-toggle-devtools",
+    "shell:allow-execute",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister-all",
+    "fs:allow-app-read",
+    "fs:allow-app-write",
+    "allow-set-locked",
+    "allow-save-bounds",
+    "allow-load-bounds",
+    "allow-toggle-devtools"
+  ]
+}

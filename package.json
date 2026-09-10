@@ -1,38 +1,21 @@
 {
   "name": "streamchat",
-  "version": "1.0.3",
-  "description": "A simple real-time chat overlay for Tiktok, Youtube Streams, made for OBS. It's built with Python (Flask) and WebSockets, and just connects to a public stream to show chat, gifts, likes, and viewer count.",
-  "main": "main.js",
+  "version": "1.1.0",
+  "description": "A real-time chat overlay for TikTok Live and YouTube Live, packaged as a Tauri desktop app with a local Node.js + Express backend.",
   "scripts": {
-    "clean": "npx rimraf release dist-ts",
-    "prebuild:ts": "npm run clean",
+    "clean": "npx rimraf release dist-ts server-dist src-tauri-app/src-tauri/target",
+    "clean:full": "npm run clean && npx rimraf src-tauri-app/node_modules src-tauri-app/package-lock.json src-tauri-app/src-tauri/resources/server/node.exe",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "electron .",
-    "dev": "electron .",
-    "build:ts": "npx esbuild server.ts --bundle --platform=node --target=node18 --outfile=dist-ts/server.js --external:tiktok-live-connector --external:youtube-chat",
-    "dist": "npm run build:ts && electron-builder --dir",
+    "dev": "cd src-tauri-app && npx kill-port 5000 --silent & npm run tauri dev",
+    "build:server": "npx esbuild server-entry.ts --bundle --platform=node --target=node18 --outfile=src-tauri-app/src-tauri/resources/server/server.cjs --external:tiktok-live-connector --external:youtube-chat",
+    "build:tauri-resources": "node scripts/prepare-tauri-resources.mjs",
+    "build:all": "npm run build:server && npm run build:tauri-resources",
+    "dist": "node scripts/dist.mjs",
+    "dist:clean": "npm run clean && npm run dist",
+    "dist:portable": "npm run dist && node scripts/portable-zip.mjs",
+    "dist:clean:portable": "npm run dist:clean && npm run dist:portable",
+    "portable": "node scripts/portable-zip.mjs",
     "postinstall": "patch-package"
-  },
-  "build": {
-    "appId": "com.asmodeus.streamchat",
-    "productName": "StreamChat",
-    "asar": true,
-    "electronLanguages": [
-      "en-US"
-    ],
-    "directories": {
-      "output": "release"
-    },
-    "files": [
-      "main.js",
-      "package.json",
-      "dist-ts/**/*",
-      "static/**/*",
-      "templates/**/*"
-    ],
-    "win": {
-      "icon": "icon.ico"
-    }
   },
   "repository": {
     "type": "git",
@@ -47,10 +30,9 @@
   },
   "homepage": "https://github.com/Asmodeus7999/StreamChatOverlay#readme",
   "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4",
     "@types/express": "^5.0.6",
     "@types/node": "^26.4.1",
-    "electron": "^44.2.0",
-    "electron-builder": "^26.15.3",
     "esbuild": "^0.25.0",
     "patch-package": "^8.0.1",
     "ts-node": "^10.9.2",
@@ -63,6 +45,6 @@
     "youtube-chat": "^2.2.0"
   },
   "allowScripts": {
-    "electron-winstaller@5.4.0": true
+    "esbuild@0.25.12": true
   }
 }

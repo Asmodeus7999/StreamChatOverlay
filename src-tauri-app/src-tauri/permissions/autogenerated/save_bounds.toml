@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-save-bounds"
+description = "Enables the save_bounds command without any pre-configured scope."
+commands.allow = ["save_bounds"]
+
+[[permission]]
+identifier = "deny-save-bounds"
+description = "Denies the save_bounds command without any pre-configured scope."
+commands.deny = ["save_bounds"]
