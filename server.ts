@@ -20,13 +20,9 @@ export function startServer(baseDir: string) {
         }
     });
 
-    // Serve static files (from public/static/)
-    app.use('/static', express.static(path.join(baseDir, 'public', 'static')));
-
-    // Serve index (from public/index.html)
-    app.get('/', (req, res) => {
-        res.sendFile(path.join(baseDir, 'public', 'index.html'));
-    });
+    // Frontend is wired up at the bottom of this function (setupFrontend),
+    // since dev mode needs an async Vite middleware handshake before the
+    // catch-all route can be registered.
 
     let currentSession: {
         client: any;
@@ -327,10 +323,52 @@ export function startServer(baseDir: string) {
         });
     });
 
+    // Frontend serving:
+    //  - Dev (DEV_MODE=1, set by start-server.cjs): Vite runs in middleware
+    //    mode against the project root (baseDir), giving HMR on the same
+    //    port as the socket.io server so tauri.conf's devUrl doesn't change.
+    //  - Prod (Tauri sidecar): baseDir/dist holds the `vite build` output
+    //    (bundled into resources/public by prepare-tauri-resources.mjs).
+    async function setupFrontend() {
+        if (process.env.DEV_MODE === '1') {
+            const { createServer: createViteServer } = await import('vite');
+            const vite = await createViteServer({
+                root: baseDir,
+                server: { middlewareMode: true },
+                appType: 'custom'
+            });
+            app.use(vite.middlewares);
+            app.use(async (req, res, next) => {
+                try {
+                    const fs = await import('fs');
+                    let html = fs.readFileSync(path.join(baseDir, 'index.html'), 'utf-8');
+                    html = await vite.transformIndexHtml(req.originalUrl, html);
+                    res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
+                } catch (e) {
+                    vite.ssrFixStacktrace(e as Error);
+                    next(e);
+                }
+            });
+        } else {
+            const distDir = path.join(baseDir, 'dist');
+            app.use(express.static(distDir));
+            app.use((req, res) => {
+                res.sendFile(path.join(distDir, 'index.html'));
+            });
+        }
+    }
+
     const host = process.env.HOST || '127.0.0.1';
     const port = parseInt(process.env.PORT || '5000');
 
-    server.listen(port, host, () => {
-        console.log(`Server running at http://${host}:${port}`);
-    });
+    setupFrontend()
+        .then(() => {
+            server.listen(port, host, () => {
+                console.log(`Server running at http://${host}:${port}`);
+            });
+        })
+        .catch((err) => {
+            console.error('Failed to set up frontend:', err);
+            process.exit(1);
+        });
 }

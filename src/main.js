@@ -1,3 +1,6 @@
+import { io } from 'socket.io-client';
+import './tauri-overlay.js';
+
 const socket = io();
 
 const MAX_MESSAGES = 50; // Max chat messages kept in DOM to limit memory usage

@@ -73,7 +73,7 @@ fn collect_bounds(window: &WebviewWindow) -> Result<WindowBounds, String> {
 }
 
 fn bounds_path(app: &AppHandle) -> tauri::Result<std::path::PathBuf> {
-    let dir = app.path().app_data_dir()?;
+    let dir = app.path().app_local_data_dir()?;
     std::fs::create_dir_all(&dir).ok();
     Ok(dir.join("window-bounds.json"))
 }

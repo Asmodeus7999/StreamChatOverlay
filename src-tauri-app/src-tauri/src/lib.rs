@@ -72,7 +72,7 @@ fn restore_window_bounds(app: &tauri::AppHandle) {
 
     let bounds: WindowBounds = app
         .path()
-        .app_data_dir()
+        .app_local_data_dir()
         .ok()
         .and_then(|dir| std::fs::read_to_string(dir.join("window-bounds.json")).ok())
         .and_then(|raw| serde_json::from_str(&raw).ok())

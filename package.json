@@ -1,15 +1,16 @@
 {
   "name": "streamchat",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "A real-time chat overlay for TikTok Live and YouTube Live, packaged as a Tauri desktop app with a local Node.js + Express backend.",
   "scripts": {
     "clean": "npx rimraf release dist-ts server-dist src-tauri-app/src-tauri/target",
     "clean:full": "npm run clean && npx rimraf src-tauri-app/node_modules src-tauri-app/package-lock.json src-tauri-app/src-tauri/resources/server/node.exe",
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "cd src-tauri-app && npx kill-port 5000 --silent & npm run tauri dev",
-    "build:server": "npx esbuild server-entry.ts --bundle --platform=node --target=node18 --outfile=src-tauri-app/src-tauri/resources/server/server.cjs --external:tiktok-live-connector --external:youtube-chat",
+    "build:server": "npx esbuild server-entry.ts --bundle --platform=node --target=node18 --outfile=src-tauri-app/src-tauri/resources/server/server.cjs --external:tiktok-live-connector --external:youtube-chat --external:vite",
+    "build:frontend": "vite build",
     "build:tauri-resources": "node scripts/prepare-tauri-resources.mjs",
-    "build:all": "npm run build:server && npm run build:tauri-resources",
+    "build:all": "npm run build:server && npm run build:frontend && npm run build:tauri-resources",
     "dist": "node scripts/dist.mjs",
     "dist:clean": "npm run clean && npm run dist",
     "dist:portable": "npm run dist && node scripts/portable-zip.mjs",
@@ -36,11 +37,13 @@
     "esbuild": "^0.25.0",
     "patch-package": "^8.0.1",
     "ts-node": "^10.9.2",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vite": "^6.0.0"
   },
   "dependencies": {
     "express": "^5.2.1",
     "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
     "tiktok-live-connector": "^2.4.4",
     "youtube-chat": "^2.2.0"
   },

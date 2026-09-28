@@ -1,5 +1,6 @@
 # TypeScript / Node / Tauri
 node_modules/
+dist/
 dist-portable/
 build/
 release/

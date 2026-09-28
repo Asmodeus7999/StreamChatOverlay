@@ -86,14 +86,17 @@ if (existsSync(nodeExeDest)) {
   }
 }
 
-// 5. Copy frontend (public/) into resources so it's bundled alongside server
-const publicSrc = 'public';
-const publicDest = `src-tauri-app/src-tauri/resources/public`;
-if (existsSync(publicSrc)) {
-  console.log(`Syncing ${publicSrc} → ${publicDest}...`);
-  if (existsSync(publicDest)) rmSync(publicDest, { recursive: true });
-  cpSync(publicSrc, publicDest, { recursive: true });
+// 5. Copy the built frontend (dist/, produced by `vite build`) into resources
+//    so it's bundled alongside the server.
+const distSrc = 'dist';
+const distDest = `src-tauri-app/src-tauri/resources/dist`;
+if (!existsSync(distSrc)) {
+  console.error(`ERROR: ${distSrc} not found. Run 'npm run build:frontend' first.`);
+  process.exit(1);
 }
+console.log(`Syncing ${distSrc} → ${distDest}...`);
+if (existsSync(distDest)) rmSync(distDest, { recursive: true });
+cpSync(distSrc, distDest, { recursive: true });
 
 console.log(`\n✓ Tauri resources ready at ${OUT}`);
 console.log('  Next: cd src-tauri-app && npm run tauri build');
