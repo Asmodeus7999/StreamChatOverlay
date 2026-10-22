@@ -15,7 +15,7 @@ pub fn run() {
     #[cfg(windows)]
     std::env::set_var(
         "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
-        "--disable-gpu-compositing --disable-features=TrackingPrevention,msTrackingPrevention,msWebview2TrackingPrevention"
+        "--disable-features=Vulkan,DefaultANGLEVulkan,VulkanFromANGLE,TrackingPrevention,msTrackingPrevention,msWebview2TrackingPrevention --use-angle=d3d11",
     );
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -41,6 +41,31 @@ pub fn run() {
 
             // Restore saved window bounds before showing
             restore_window_bounds(app.handle());
+
+            // ── Windows-only: make the overlay invisible to the input chain ──
+            // WS_EX_NOACTIVATE prevents the overlay from ever stealing focus,
+            // which fixes cursor coordinate mismatches in raw-input games
+            // (e.g. osu!, CS2) caused by DWM compositor interference.
+            #[cfg(windows)]
+            if let Some(win) = app.get_webview_window("main") {
+                use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+                use windows_sys::Win32::UI::WindowsAndMessaging::{
+                    GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_NOACTIVATE,
+                };
+                if let Ok(handle) = win.window_handle() {
+                    if let RawWindowHandle::Win32(h) = handle.as_raw() {
+                        let hwnd = h.hwnd.get() as windows_sys::Win32::Foundation::HWND;
+                        unsafe {
+                            let ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+                            SetWindowLongPtrW(
+                                hwnd,
+                                GWL_EXSTYLE,
+                                ex_style | WS_EX_NOACTIVATE as isize,
+                            );
+                        }
+                    }
+                }
+            }
 
             sidecar::spawn_server(app.handle())?;
             shortcuts::register_all(app.handle())?;
@@ -89,6 +114,11 @@ fn restore_window_bounds(app: &tauri::AppHandle) {
                 let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
             }
         }
-        let _ = win.set_size(tauri::PhysicalSize::new(bounds.width, bounds.height));
+        // Enforce minimum size so the window is always usable
+        // (prevents restoring a tiny overlay-sized window on the setup screen)
+        let defaults = WindowBounds::default();
+        let width = if bounds.width >= 300 { bounds.width } else { defaults.width };
+        let height = if bounds.height >= 200 { bounds.height } else { defaults.height };
+        let _ = win.set_size(tauri::PhysicalSize::new(width, height));
     }
 }

@@ -1,7 +1,11 @@
 import { io } from 'socket.io-client';
 import './tauri-overlay.js';
 
-const socket = io();
+// When frontend is embedded in the Tauri exe, the page origin is tauri://localhost
+// so we must explicitly connect to the Node.js backend.
+// In dev mode (Vite middleware on same port), auto-connect works fine.
+const SERVER_URL = 'http://127.0.0.1:5000';
+const socket = io(SERVER_URL);
 
 const MAX_MESSAGES = 50; // Max chat messages kept in DOM to limit memory usage
 
@@ -426,6 +430,17 @@ function addMessage(data) {
     }
 
     chatMessages.prepend(msgDiv);
+
+    // Add scroll up animation synced with CSS slideFromRight
+    const height = msgDiv.offsetHeight;
+    const gap = 8; // Match the gap in #chat-messages
+    msgDiv.animate([
+        { marginTop: `-${height + gap}px` },
+        { marginTop: '0px' }
+    ], {
+        duration: 300,
+        easing: 'cubic-bezier(0.175, 0.885, 0.32, 1.2)'
+    });
 
     // Keep only last MAX_MESSAGES messages to prevent memory growth
     while (chatMessages.children.length > MAX_MESSAGES) {

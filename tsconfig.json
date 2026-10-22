@@ -6,8 +6,13 @@
     "rootDir": "./",
     "strict": false,
     "esModuleInterop": true,
+    "moduleResolution": "node",
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "vite": ["./node_modules/vite/dist/node/index.d.ts"]
+    }
   },
   "include": [
     "server.ts",

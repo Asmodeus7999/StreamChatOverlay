@@ -4,7 +4,8 @@
   "version": "1.1.1",
   "identifier": "com.asmodeus.streamchat",
   "build": {
-    "beforeDevCommand": "node start-server.cjs",
+    "frontendDist": "../dist",
+    "beforeDevCommand": "node scripts/start-server.cjs",
     "devUrl": "http://127.0.0.1:5000",
     "beforeBuildCommand": ""
   },
@@ -14,7 +15,6 @@
       {
         "label": "main",
         "title": "StreamChat Overlay",
-        "url": "http://127.0.0.1:5000",
         "width": 400,
         "height": 520,
         "transparent": true,
@@ -43,8 +43,7 @@
       }
     },
     "resources": {
-      "resources/server": "server",
-      "resources/dist": "dist"
+      "resources/server": "server"
     }
   }
 }

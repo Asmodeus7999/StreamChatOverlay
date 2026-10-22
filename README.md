@@ -56,7 +56,7 @@ The overlay starts in an **unlocked** state so you can move and resize it.
 
 - `server.ts` — Express server and stream integrations
 - `public/` — web frontend assets
-- `src-tauri-app/` — Tauri v2 desktop shell and native runtime setup
+- `src-tauri/` — Tauri v2 desktop shell and native runtime setup
 - `scripts/` — build and packaging helpers
 
 ## License

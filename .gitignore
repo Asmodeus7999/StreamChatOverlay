@@ -4,6 +4,11 @@ dist/
 dist-portable/
 build/
 release/
+src-tauri/target/
+src-tauri/gen/schemas/
+src-tauri/resources/server/node_modules/
+src-tauri/resources/server/node.exe
+src-tauri/resources/server/server.cjs
 
 # Env / secrets
 .env

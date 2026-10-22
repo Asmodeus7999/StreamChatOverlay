@@ -7,10 +7,13 @@ export function startServer(baseDir: string) {
     const app = express();
     const server = createServer(app);
 
-    // Setup origins
+    // Setup origins — include Tauri's embedded frontend origins
     const defaultOrigins = [
         "http://localhost:5000",
         "http://127.0.0.1:5000",
+        "tauri://localhost",
+        "https://tauri.localhost",
+        "http://tauri.localhost",
     ];
     const envOrigins = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim()).filter(Boolean) : defaultOrigins;
 
@@ -327,33 +330,43 @@ export function startServer(baseDir: string) {
     //  - Dev (DEV_MODE=1, set by start-server.cjs): Vite runs in middleware
     //    mode against the project root (baseDir), giving HMR on the same
     //    port as the socket.io server so tauri.conf's devUrl doesn't change.
-    //  - Prod (Tauri sidecar): baseDir/dist holds the `vite build` output
-    //    (bundled into resources/public by prepare-tauri-resources.mjs).
+    //  - Prod (Tauri sidecar): frontend is embedded in the Tauri exe via
+    //    frontendDist — the server is API-only (socket.io + health check).
     async function setupFrontend() {
         if (process.env.DEV_MODE === '1') {
             const { createServer: createViteServer } = await import('vite');
             const vite = await createViteServer({
                 root: baseDir,
-                server: { middlewareMode: true },
+                server: {
+                    middlewareMode: true,
+                    watch: {
+                        ignored: ['**/src-tauri/**', '**/node_modules/**']
+                    }
+                },
                 appType: 'custom'
             });
             app.use(vite.middlewares);
             app.use(async (req, res, next) => {
-                try {
-                    const fs = await import('fs');
-                    let html = fs.readFileSync(path.join(baseDir, 'index.html'), 'utf-8');
-                    html = await vite.transformIndexHtml(req.originalUrl, html);
-                    res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
-                } catch (e) {
-                    vite.ssrFixStacktrace(e as Error);
-                    next(e);
+                if (req.method !== 'GET') return next();
+                const accept = req.headers.accept || '';
+                if (req.path === '/' || accept.includes('text/html') || !path.extname(req.path)) {
+                    try {
+                        const fs = await import('fs');
+                        let html = fs.readFileSync(path.join(baseDir, 'index.html'), 'utf-8');
+                        html = await vite.transformIndexHtml(req.originalUrl, html);
+                        res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
+                    } catch (e) {
+                        next(e);
+                    }
+                } else {
+                    next();
                 }
             });
         } else {
-            const distDir = path.join(baseDir, 'dist');
-            app.use(express.static(distDir));
-            app.use((req, res) => {
-                res.sendFile(path.join(distDir, 'index.html'));
+            // Production: frontend is embedded in the Tauri exe.
+            // Only provide a health check endpoint for the sidecar readiness poll.
+            app.get('/', (req, res) => {
+                res.status(200).json({ status: 'ok' });
             });
         }
     }
@@ -372,3 +385,4 @@ export function startServer(baseDir: string) {
             process.exit(1);
         });
 }
+

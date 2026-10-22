@@ -5,6 +5,7 @@
 use std::sync::Mutex;
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
+#[cfg(not(debug_assertions))]
 use tauri_plugin_shell::ShellExt;
 
 /// Holds the child process handle so we can kill it on exit.
@@ -21,57 +22,69 @@ const SERVER_PORT: u16 = 5000;
 /// Spawns `resources/server/node.exe resources/server/server.js` and
 /// polls http://127.0.0.1:5000 until it responds, then shows the window.
 pub fn spawn_server(app: &AppHandle) -> tauri::Result<()> {
-    let resource_dir = app.path().resource_dir()?;
-    let node_exe = resource_dir.join("server").join("node.exe");
-    let server_js = resource_dir.join("server").join("server.cjs");
+    #[cfg(not(debug_assertions))]
+    {
+        let resource_dir = app.path().resource_dir()?;
+        let node_exe = resource_dir.join("server").join("node.exe");
+        let server_js = resource_dir.join("server").join("server.cjs");
 
-    crate::logging::write_line(app, "sidecar", &format!(
-        "Spawning node: {} {}",
-        node_exe.display(),
-        server_js.display()
-    ));
+        crate::logging::write_line(app, "sidecar", &format!(
+            "Spawning node: {} {}",
+            node_exe.display(),
+            server_js.display()
+        ));
 
-    let (mut rx, child) = app
-        .shell()
-        .command(node_exe.to_string_lossy().as_ref())
-        .args([server_js.to_string_lossy().as_ref()])
-        .env("PORT", SERVER_PORT.to_string())
-        .spawn()
-        .map_err(|e| tauri::Error::Anyhow(e.into()))?;
+        let (mut rx, child) = app
+            .shell()
+            .command(node_exe.to_string_lossy().as_ref())
+            .args([server_js.to_string_lossy().as_ref()])
+            .env("PORT", SERVER_PORT.to_string())
+            .spawn()
+            .map_err(|e| tauri::Error::Anyhow(e.into()))?;
 
-    // Stash handle for kill-on-exit
-    app.state::<ServerHandle>()
-        .0
-        .lock()
-        .unwrap()
-        .replace(child);
+        // Stash handle for kill-on-exit
+        app.state::<ServerHandle>()
+            .0
+            .lock()
+            .unwrap()
+            .replace(child);
 
-    // Pipe stdout/stderr to the debug log
-    let app_log = app.clone();
-    tauri::async_runtime::spawn(async move {
-        use tauri_plugin_shell::process::CommandEvent;
-        while let Some(event) = rx.recv().await {
-            match event {
-                CommandEvent::Stdout(line) => {
-                    crate::logging::write_line(&app_log, "server", &String::from_utf8_lossy(&line));
+        // Pipe stdout/stderr to the debug log
+        let app_log = app.clone();
+        tauri::async_runtime::spawn(async move {
+            use tauri_plugin_shell::process::CommandEvent;
+            while let Some(event) = rx.recv().await {
+                match event {
+                    CommandEvent::Stdout(line) => {
+                        crate::logging::write_line(&app_log, "server", &String::from_utf8_lossy(&line));
+                    }
+                    CommandEvent::Stderr(line) => {
+                        crate::logging::write_line(&app_log, "server-err", &String::from_utf8_lossy(&line));
+                    }
+                    CommandEvent::Error(err) => {
+                        crate::logging::write_line(&app_log, "server-fatal", &err);
+                    }
+                    CommandEvent::Terminated(payload) => {
+                        crate::logging::write_line(
+                            &app_log,
+                            "server",
+                            &format!("terminated: {:?}", payload),
+                        );
+                    }
+                    _ => {}
                 }
-                CommandEvent::Stderr(line) => {
-                    crate::logging::write_line(&app_log, "server-err", &String::from_utf8_lossy(&line));
-                }
-                CommandEvent::Error(err) => {
-                    crate::logging::write_line(&app_log, "server-fatal", &err);
-                }
-                CommandEvent::Terminated(payload) => {
-                    crate::logging::write_line(
-                        &app_log,
-                        "server",
-                        &format!("terminated: {:?}", payload),
-                    );
-                }
-                _ => {}
             }
-        }
-    });
+        });
+    }
+
+    #[cfg(debug_assertions)]
+    {
+        crate::logging::write_line(
+            app,
+            "sidecar",
+            "Debug mode: skipping sidecar spawn (server managed by beforeDevCommand)",
+        );
+    }
 
     // Poll for readiness then reveal window
     let app_poll = app.clone();

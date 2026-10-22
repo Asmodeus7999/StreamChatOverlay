@@ -1,29 +1,44 @@
 // scripts/prepare-tauri-resources.mjs
 // Assembles the resources/server/ directory consumed by Tauri's bundle.resources.
-// Run via: npm run build:tauri-resources  (called automatically by npm run build:all)
+// Run via: npm run build:tauri-resources  (called automatically by npm run build)
 //
-// Output layout:
-//   src-tauri-app/src-tauri/resources/server/
-//   ├── node.exe                      ← portable Node LTS (win-x64), >=20 required by tiktok-live-connector
-//   ├── server.cjs                    ← esbuild bundle of server-entry.ts
-//   └── node_modules/
-//       ├── tiktok-live-connector/    ← full package + its FULL transitive dependency tree
-//       └── youtube-chat/             ← full package (patch already applied)
+// Output layout (fully self-contained — no node_modules needed):
+//   src-tauri/resources/server/
+//   ├── node.exe                      ← portable Node LTS (win-x64)
+//   └── server.cjs                    ← esbuild bundle (ALL deps included)
 
-import { cpSync, mkdirSync, existsSync, rmSync, mkdtempSync, readFileSync, writeFileSync } from 'fs';
+import { mkdirSync, existsSync, writeFileSync } from 'fs';
 import { execSync } from 'child_process';
-import path from 'path';
-import os from 'os';
+import { patchYouTubeChat } from './patch-youtube-chat.mjs';
 
-const NODE_VERSION = '22.11.0'; // tiktok-live-connector requires Node >=20.0.0 — 18 will NOT work
+// Dynamically fetch the latest Node.js version from nodejs.org
+async function resolveLatestNodeVersion() {
+  try {
+    const res = await fetch('https://nodejs.org/dist/index.json', {
+      signal: AbortSignal.timeout(4000),
+      headers: { 'User-Agent': 'Node-Fetch' }
+    });
+    if (res.ok) {
+      const releases = await res.json();
+      if (Array.isArray(releases) && releases.length > 0) {
+        const latest = releases[0].version.replace(/^v/, '');
+        return latest;
+      }
+    }
+  } catch (err) {
+    console.warn(`Note: Could not fetch latest Node from nodejs.org (${err.message}). Using local Node version.`);
+  }
+  return process.version.replace(/^v/, '') || '26.12.1';
+}
+
+const NODE_VERSION = await resolveLatestNodeVersion();
 const NODE_URL = `https://nodejs.org/dist/v${NODE_VERSION}/win-x64/node.exe`;
-const OUT = 'src-tauri-app/src-tauri/resources/server';
-const NATIVE_PACKAGES = ['tiktok-live-connector', 'youtube-chat'];
+const OUT = 'src-tauri/resources/server';
 
-console.log('=== Preparing Tauri resources ===\n');
+console.log(`=== Preparing Tauri resources (Node.js v${NODE_VERSION}) ===\n`);
 
-// 1. Ensure output dirs exist (don't clean — server.cjs is already written by build:server)
-mkdirSync(`${OUT}/node_modules`, { recursive: true });
+// 1. Ensure output dir exists
+mkdirSync(OUT, { recursive: true });
 
 // 2. Verify server.cjs was already built by build:server
 const serverBundle = `${OUT}/server.cjs`;
@@ -33,49 +48,25 @@ if (!existsSync(serverBundle)) {
 }
 console.log(`✓ ${serverBundle} present`);
 
-// 3. Build a COMPLETE, self-contained node_modules for the native packages.
-//    Copying only node_modules/<pkg> from the root project misses anything npm
-//    hoisted to the root node_modules (tiktok-live-proto, @bufbuild/protobuf,
-//    got, ws, etc.) — which is invisible to Node's resolver once this folder
-//    is moved outside the project tree (e.g. installed via NSIS).
-//    Fix: do a clean, isolated `npm install` in a scratch folder so the
-//    resulting node_modules is fully self-contained, then copy that whole tree.
-if (existsSync(`${OUT}/node_modules`)) {
-  rmSync(`${OUT}/node_modules`, { recursive: true, force: true });
-}
-mkdirSync(`${OUT}/node_modules`, { recursive: true });
-
-const rootPkg = JSON.parse(readFileSync('package.json', 'utf8'));
-const tmpDir = mkdtempSync(path.join(os.tmpdir(), 'tauri-server-deps-'));
-const scratchPkg = {
-  name: 'tauri-server-deps',
-  version: '0.0.0',
-  private: true,
-  dependencies: Object.fromEntries(
-    NATIVE_PACKAGES.map((p) => [p, rootPkg.dependencies[p]])
-  ),
-};
-writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify(scratchPkg, null, 2));
-
-console.log(`Installing self-contained dependency tree in ${tmpDir}...`);
-execSync('npm install --omit=dev --no-audit --no-fund', { cwd: tmpDir, stdio: 'inherit' });
-
-console.log(`Copying full resolved node_modules → ${OUT}/node_modules...`);
-cpSync(path.join(tmpDir, 'node_modules'), `${OUT}/node_modules`, { recursive: true });
-
-// Re-apply the youtube-chat patch by overwriting with the already-patched copy
-// from the root project (avoids re-running patch-package against the scratch install).
-console.log('Re-applying patched youtube-chat...');
-cpSync('node_modules/youtube-chat', `${OUT}/node_modules/youtube-chat`, { recursive: true });
-
-rmSync(tmpDir, { recursive: true, force: true });
-
-// 4. Download portable node.exe if not already cached
+// 3. Download portable node.exe if not cached or version mismatch
 const nodeExeDest = `${OUT}/node.exe`;
+let needsDownload = true;
+
 if (existsSync(nodeExeDest)) {
-  console.log(`node.exe already present at ${nodeExeDest}, skipping download.`);
-  console.log('  (If you previously had an old Node 18 build cached here, delete it manually so it re-downloads.)');
-} else {
+  try {
+    const currentVer = execSync(`"${nodeExeDest}" -v`, { encoding: 'utf8' }).trim();
+    if (currentVer === `v${NODE_VERSION}`) {
+      console.log(`✓ node.exe (${currentVer}) already up to date, skipping download.`);
+      needsDownload = false;
+    } else {
+      console.log(`Updating node.exe: found ${currentVer}, expected v${NODE_VERSION}.`);
+    }
+  } catch {
+    needsDownload = true;
+  }
+}
+
+if (needsDownload) {
   console.log(`Downloading portable Node ${NODE_VERSION} from ${NODE_URL}...`);
   try {
     execSync(`curl -L --progress-bar "${NODE_URL}" -o "${nodeExeDest}"`, { stdio: 'inherit' });
@@ -86,17 +77,31 @@ if (existsSync(nodeExeDest)) {
   }
 }
 
-// 5. Copy the built frontend (dist/, produced by `vite build`) into resources
-//    so it's bundled alongside the server.
-const distSrc = 'dist';
-const distDest = `src-tauri-app/src-tauri/resources/dist`;
-if (!existsSync(distSrc)) {
-  console.error(`ERROR: ${distSrc} not found. Run 'npm run build:frontend' first.`);
-  process.exit(1);
+// 4. Install production dependencies that were excluded from the bundle
+console.log('Installing external dependencies into resources/server...');
+const serverPackageJson = {
+  name: "server-deps",
+  version: "1.0.0",
+  private: true,
+  type: "commonjs",
+  dependencies: {
+    "tiktok-live-connector": "^2.4.4",
+    "youtube-chat": "^2.2.0"
+  }
+};
+writeFileSync(`${OUT}/package.json`, JSON.stringify(serverPackageJson, null, 2));
+execSync('npm install --omit=dev', { cwd: OUT, stdio: 'inherit' });
+patchYouTubeChat(OUT);
+
+// 5. Clean up package files so they don't get bundled in the installer
+import { rmSync } from 'fs';
+try {
+  rmSync(`${OUT}/package.json`, { force: true });
+  rmSync(`${OUT}/package-lock.json`, { force: true });
+} catch (e) {
+  console.log('Note: Could not remove package files:', e.message);
 }
-console.log(`Syncing ${distSrc} → ${distDest}...`);
-if (existsSync(distDest)) rmSync(distDest, { recursive: true });
-cpSync(distSrc, distDest, { recursive: true });
 
 console.log(`\n✓ Tauri resources ready at ${OUT}`);
-console.log('  Next: cd src-tauri-app && npm run tauri build');
+console.log('  Contents: node.exe + server.cjs + node_modules (with tiktok and youtube packages)');
+console.log('  Frontend is embedded directly in the Tauri exe via frontendDist.');
